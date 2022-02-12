@@ -1,0 +1,162 @@
+
+on:
+  push:
+    branches:
+    - main
+  
+  release:
+    types: [created]
+
+name: Deploy to Amazon ECS
+
+jobs:
+  deploy:
+    name: Deploy-test
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+
+    - name: Show Working directory
+      run: pwd  
+
+    - name: Show Working directory
+      run: ls -la  
+
+    - name: Checkout
+      uses: actions/checkout@v2
+
+
+    - name: VCP Web repo checkout
+      uses: actions/checkout@v2  
+      with:
+          repository: Virtusa-Systems-LLC/vcp-web
+          token: ${{ secrets.MY_PAT }}
+          path: vss-images
+          ref: TA-1.0.1
+
+    - name: Show Working directory
+      run: ls -ltr  
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+    
+    - name: Build, tag, and push admin nginx image to Amazon ECR
+      id: build-vcp-admin-nginx-reverse-proxy-id
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: vss-images
+        IMAGE_TAG: vcp-admin-nginx-reverse-proxy-img
+      run: |
+        ls -ltr
+        cd admin/nginx
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        
+    - name: Build, tag, and push admin image to Amazon ECR
+      id: build-admin-php-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: vss-images
+        IMAGE_TAG: vcp-admin-ui
+      run: |
+        ls -ltr
+        cd admin/php
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+    - name: Build, tag, and push student nginx image to Amazon ECR
+      id: build-vcp-student-nginx-reverse-proxy-id
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: vss-images
+        IMAGE_TAG: vcp-student-nginx-reverse-proxy-img
+      run: |
+        ls -ltr
+        cd student/nginx
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        
+    - name: Build, tag, and push student image to Amazon ECR
+      id: build-student-php-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: vss-images
+        IMAGE_TAG: vcp-student-ui
+      run: |
+        ls -ltr
+        cd student/php
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+    - name: Build, tag, and push web nginx image to Amazon ECR
+      id: build-vcp-web-nginx-reverse-proxy-id
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: vss-images
+        IMAGE_TAG: vcp-web-nginx-reverse-proxy-img
+      run: |
+        ls -ltr
+        cd web/nginx
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        
+    - name: Build, tag, and push web image to Amazon ECR
+      id: build-web-php-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: vss-images
+        IMAGE_TAG: vcp-web-ui
+      run: |
+        ls -ltr
+        cd web/php
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+    
+    - name: Build, tag, and push nginx image to Amazon ECR
+      id: build-vcp-nginx-rp-id
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        ECR_REPOSITORY: vss-images
+        IMAGE_TAG: vcp-nginx-rp-img
+      run: |
+        ls -ltr
+        cd nginx
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+        
+    - name: Fill in the new image ID in the Amazon ECS task definition
+      id: task-def
+      uses: aws-actions/amazon-ecs-render-task-definition@v1
+      with:
+        task-definition: ecstaskdefinition.json
+        container-name: vcp-nginx-rp-img
+        image: vcp-nginx-rp-img
+
+    - name: Deploy Amazon ECS task definition
+      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+      with: 
+        task-definition: ecstaskdefinition.json
+        service: PROD-REACT-UI-SVC
+        cluster: vcpcluster
+        wait-for-service-stability: true
+        force-new-deployment: true
+        
+
+ 
